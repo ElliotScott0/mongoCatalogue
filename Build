@@ -1,0 +1,37 @@
+docker rm -f restheart mongodb
+
+
+# Create directories if they don't exist
+mkdir -p data import
+
+# Create Docker secret for MongoDB password
+echo -n "R3ste4rt!" | docker secret create mongodb_password -
+
+echo "Starting MongoDB container..."
+docker run -d \
+  -e MONGO_INITDB_ROOT_USERNAME='restheart' \
+  -e MONGO_INITDB_ROOT_PASSWORD_FILE=/run/secrets/mongodb_password \
+  --name mongodb \
+  -v "$PWD/data:/data/db" \
+  -v "$PWD/import:/home" \
+  --secret mongodb_password \
+  mongo:latest --bind_ip_all --auth
+
+echo "Importing data into MongoDB..."
+docker exec mongodb mongoimport \
+  -u restheart -p "$(cat /run/secrets/mongodb_password)" \
+  --authenticationDatabase admin \
+  --db myflix --collection videos --drop \
+  --file /home/videos.json
+
+docker exec mongodb mongoimport \
+  -u restheart -p "$(cat /run/secrets/mongodb_password)" \
+  --authenticationDatabase admin \
+  --db myflix --collection categories --drop \
+  --file /home/categories.json
+
+echo "Starting Restheart container..."
+docker run -d -p 80:8080 \
+  --name restheart \
+  --link mongodb:mongodb \
+  softinstigate/restheart
